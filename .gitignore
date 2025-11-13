@@ -1,0 +1,21 @@
+# Secrets
+.env
+
+# Chroma database
+chroma_db/
+chromadb_store/
+
+# Raw extracted text
+data/
+
+# PDF source documents
+mzu_docs/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# VSCode
+.vscode/
