@@ -1,12 +1,20 @@
+@"
 services:
   - type: web
     name: mzu-rag-api
     env: python
+    region: oregon
     plan: free
+
     buildCommand: "pip install -r requirements.txt"
     startCommand: "gunicorn api:app --bind 0.0.0.0:10000"
+
     envVars:
       - key: OPENAI_API_KEY
         sync: false
       - key: API_AUTH_TOKEN
         sync: false
+"@ > render.yaml
+
+# Show it
+type render.yaml
