@@ -10,3 +10,4 @@ sentencepiece
 reportlab
 # Optional for FAISS: faiss-cpu
 gunicorn
+flask-cors

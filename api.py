@@ -18,8 +18,9 @@ def _import_answer():
 
 app = Flask(__name__)
 
-if cors_available:
-    CORS(app)
+from flask_cors import CORS
+CORS(app)
+
 
 API_AUTH_TOKEN = os.getenv("API_AUTH_TOKEN")
 
