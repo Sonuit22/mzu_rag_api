@@ -1,15 +1,16 @@
 # query.py
 import os
-from openai import OpenAI
 import chromadb
-chroma_client = chromadb.PersistentClient(path="./chroma_db")
-
+from openai import OpenAI
 from utils import read_file
 
-API_KEY = os.getenv('OPENAI_API_KEY')
+# Load API key
+API_KEY = os.getenv("OPENAI_API_KEY")
 client = OpenAI(api_key=API_KEY)
+
+# Chroma persistent DB
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
-collection = chroma_client.get_collection('mzu_knowledge')
+collection = chroma_client.get_collection("mzu_knowledge")
 
 SYSTEM_PROMPT = (
     "You are an assistant for Mizoram University (MZU). Answer the user's question using ONLY the provided context. "
@@ -18,23 +19,44 @@ SYSTEM_PROMPT = (
 
 
 def answer_query(query, k=3):
-    qresp = client.embeddings.create(model='text-embedding-3-small', input=query)
+
+    # Embedding
+    qresp = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=query
+    )
     qemb = qresp.data[0].embedding
 
-    results = collection.query(query_embeddings=[qemb], n_results=k)
-    docs = results['documents'][0]
-    metadatas = results.get('metadatas', [[]])[0]
+    # Vector search
+    results = collection.query(
+        query_embeddings=[qemb],
+        n_results=k
+    )
 
-    context = '\n\n'.join([f"[Source: {m.get('source','mzu')} chunk:{m.get('chunk')}]\n" + d for d, m in zip(docs, metadatas)])
+    docs = results["documents"][0]
+    metadatas = results.get("metadatas", [[]])[0]
 
+    context = "\n\n".join([
+        f"[Source: {m.get('source','mzu')} chunk:{m.get('chunk')}]\n{d}"
+        for d, m in zip(docs, metadatas)
+    ])
+
+    # Chat completion using new API
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"}
     ]
 
-    resp = client.chat.completions.create(model='gpt-4o', messages=messages, max_tokens=400)
-    return resp.choices[0].message.content
+    # New OpenAI Responses API
+    resp = client.responses.create(
+        model="gpt-4o",
+        input=messages,
+        max_output_tokens=400
+    )
 
-if __name__ == '__main__':
-    q = input('Question: ')
+    return resp.output_text
+
+
+if __name__ == "__main__":
+    q = input("Question: ")
     print(answer_query(q))
