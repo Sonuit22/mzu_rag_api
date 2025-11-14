@@ -6,17 +6,23 @@ from utils import read_file
 
 # Load API key
 API_KEY = os.getenv("OPENAI_API_KEY")
+if not API_KEY:
+    raise ValueError("OPENAI_API_KEY is not set in environment")
 client = OpenAI(api_key=API_KEY)
 
 # Chroma persistent DB
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
-collection = chroma_client.get_collection("mzu_knowledge")
+
+# Ensure collection exists (FIXED)
+try:
+    collection = chroma_client.get_collection("mzu_knowledge")
+except:
+    collection = chroma_client.create_collection("mzu_knowledge")
 
 SYSTEM_PROMPT = (
     "You are an assistant for Mizoram University (MZU). Answer the user's question using ONLY the provided context. "
     "If the answer is not in the context, say you don't know and suggest a way to find it. Keep answers concise and factual."
 )
-
 
 def answer_query(query, k=3):
 
@@ -33,7 +39,7 @@ def answer_query(query, k=3):
         n_results=k
     )
 
-    docs = results["documents"][0]
+    docs = results.get("documents", [[]])[0]
     metadatas = results.get("metadatas", [[]])[0]
 
     context = "\n\n".join([
@@ -47,7 +53,6 @@ def answer_query(query, k=3):
         {"role": "user", "content": f"Context:\n{context}\n\nQuestion: {query}"}
     ]
 
-    # New OpenAI Responses API
     resp = client.responses.create(
         model="gpt-4o",
         input=messages,
@@ -55,7 +60,6 @@ def answer_query(query, k=3):
     )
 
     return resp.output_text
-
 
 if __name__ == "__main__":
     q = input("Question: ")
