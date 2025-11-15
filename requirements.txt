@@ -2,8 +2,6 @@ flask
 flask-cors
 requests
 beautifulsoup4
-sentence-transformers
-chromadb
 numpy
 tqdm
 python-dotenv
