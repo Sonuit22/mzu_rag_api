@@ -7,3 +7,4 @@ chromadb
 numpy
 tqdm
 python-dotenv
+gunicorn
