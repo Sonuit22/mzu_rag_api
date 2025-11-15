@@ -14,7 +14,7 @@ services:
 
     envVars:
       - key: PYTHON_VERSION
-        value: 3.10
+        value: 3.10.13      # valid!
 
       - key: LLM_API_URL
         sync: false
@@ -23,4 +23,4 @@ services:
         sync: false
 
       - key: LLM_MODEL
-        value: llama3-8b
+        value: llama3-8b-8192   # correct Groq model name
