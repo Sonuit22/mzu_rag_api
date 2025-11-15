@@ -29,7 +29,7 @@ FAST_PAGES = [
     "https://mzu.edu.in/contact-us/",
     "https://mzu.edu.in/department-of-information-technology/",
     "https://mzu.edu.in/examination-news-results/",
-    "https://mzu.edu.in/message-by-vice-chancellor/",
+    "https://mzu.edu.in/message-by-vice-chancellor/"
 ]
 
 def scrape_page(url):
