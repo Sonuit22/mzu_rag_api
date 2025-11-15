@@ -1,17 +1,16 @@
-# api.py
+# api.py – FINAL UPDATED VERSION
+# Clean, stable, Render-ready backend
 
 from flask import Flask, request, jsonify
 import os
 import traceback
 import subprocess
-
-# Enable CORS for GitHub Pages
 from flask_cors import CORS
-from query import answer_query   # Lazy import removed for simplicity
 
-# Flask App
+from query import answer_query   # NEW updated answer system
+
 app = Flask(__name__)
-CORS(app)  # Allow frontend to call the API
+CORS(app)
 
 
 # ----------------------------
@@ -27,13 +26,13 @@ def health():
 # ----------------------------
 @app.route("/info", methods=["GET"])
 def info():
+    """
+    Returns collection name + document count.
+    Works even if Chroma folder is empty.
+    """
     try:
         import chromadb
-        from chromadb.config import Settings
-
-        chroma_client = chromadb.Client(
-            Settings(chroma_db_impl="duckdb+parquet", persist_directory="./chromadb_store")
-        )
+        chroma_client = chromadb.PersistentClient(path="./chroma_db")
 
         collections = chroma_client.list_collections()
         names = [c.name for c in collections]
@@ -59,33 +58,43 @@ def info():
 # ----------------------------
 @app.route("/chat", methods=["POST"])
 def chat():
+    """
+    Main chat endpoint used by your frontend.
+    {
+      "query": "your question",
+      "k": 3
+    }
+    """
     try:
         data = request.get_json(force=True)
 
-        if "query" not in data:
+        if not data or "query" not in data:
             return jsonify({"error": "No query provided"}), 400
 
         question = data["query"]
         k = int(data.get("k", 3))
 
-        # Call RAG pipeline
+        # Call full RAG + scraping + LLM chain
         answer = answer_query(question, k=k)
 
         return jsonify({"answer": answer})
 
     except Exception as e:
         traceback.print_exc()
-        return jsonify({"error": "internal_error", "details": str(e)}), 500
+        return jsonify({
+            "error": "internal_error",
+            "details": str(e)
+        }), 500
 
 
 # ----------------------------
-# Build Vector DB on Render
+# Build Vector DB Endpoint
 # ----------------------------
 @app.route("/builddb", methods=["POST"])
 def builddb():
     """
-    Runs embed_store.py on the server.
-    This generates embeddings and stores them in chromadb_store.
+    Rebuilds vector DB using embed_store.py.
+    You should call this ONCE after Render deploy.
     """
     try:
         proc = subprocess.run(
@@ -96,8 +105,8 @@ def builddb():
 
         return jsonify({
             "returncode": proc.returncode,
-            "stdout": proc.stdout[-500:],
-            "stderr": proc.stderr[-500:]
+            "stdout": proc.stdout[-800:],
+            "stderr": proc.stderr[-800:]
         })
 
     except Exception as e:
@@ -109,5 +118,5 @@ def builddb():
 # Local Dev Server
 # ----------------------------
 if __name__ == "__main__":
-    print("Running API locally...")
+    print("Running API locally at http://localhost:5000")
     app.run(host="0.0.0.0", port=5000, debug=True)

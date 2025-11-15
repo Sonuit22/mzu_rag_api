@@ -1,14 +1,29 @@
 services:
   - type: web
-    name: mzu-rag-api
+    name: mzu-rag-backend
     env: python
+    region: singapore
     plan: free
 
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn api:app --bind 0.0.0.0:10000"
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r requirements.txt
+
+    startCommand: |
+      gunicorn api:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
 
     envVars:
-      - key: OPENAI_API_KEY
+      - key: PYTHON_VERSION
+        value: 3.10
+
+      - key: LLM_API_URL
         sync: false
-      - key: API_AUTH_TOKEN
+
+      - key: LLM_API_KEY
         sync: false
+
+      - key: LLM_MODEL
+        value: llama3-8b  # recommended free model for Groq
+
+      - key: CHROMA_DIR
+        value: ./chroma_db

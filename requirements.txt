@@ -1,13 +1,9 @@
-wheel
-openai
-chromadb
-pymupdf
 flask
-python-dotenv
-tqdm
-nltk
-sentencepiece
-reportlab
-# Optional for FAISS: faiss-cpu
-gunicorn
 flask-cors
+requests
+beautifulsoup4
+sentence-transformers
+chromadb
+numpy
+tqdm
+python-dotenv

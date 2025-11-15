@@ -1,53 +1,88 @@
-# embed_store.py
+# embed_store.py – FINAL OFFLINE VERSION
+# Uses SentenceTransformers + Chroma (NO API, NO COST)
+
 import os
-from openai import OpenAI
 import chromadb
-
-chroma_client = chromadb.PersistentClient(path="./chroma_db")
-
+from sentence_transformers import SentenceTransformer
 from tqdm import tqdm
 from chunk import chunk_text
 from utils import read_file
 
-API_KEY = os.getenv('OPENAI_API_KEY')
-if not API_KEY:
-    raise ValueError('Set OPENAI_API_KEY in environment')
 
-client = OpenAI(api_key=API_KEY)
+# -------------------------------------
+# Embedding model (FREE, OFFLINE)
+# -------------------------------------
+embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
-chroma_client = chromadb.PersistentClient(path="./chroma_db")
 
-collection_name = 'mzu_knowledge'
-existing = [c.name for c in chroma_client.list_collections()]
-if collection_name in existing:
-    collection = chroma_client.get_collection(collection_name)
-else:
-    collection = chroma_client.create_collection(collection_name)
+# -------------------------------------
+# Chroma persistent DB
+# -------------------------------------
+CHROMA_DIR = "./chroma_db"
+os.makedirs(CHROMA_DIR, exist_ok=True)
 
-text = read_file('data/mzu_raw.txt')
-chunks = chunk_text(text, chunk_size=1000, overlap=200)
+chroma_client = chromadb.PersistentClient(path=CHROMA_DIR)
+
+COLLECTION_NAME = "mzu_knowledge"
+
+try:
+    collection = chroma_client.get_collection(COLLECTION_NAME)
+except:
+    collection = chroma_client.create_collection(COLLECTION_NAME)
+
+
+# -------------------------------------
+# Load training source file(s)
+# -------------------------------------
+DATA_PATH = "data/mzu_raw.txt"
+
+if not os.path.exists(DATA_PATH):
+    raise FileNotFoundError(f"Training file missing: {DATA_PATH}")
+
+full_text = read_file(DATA_PATH)
+
+# Split text into chunks
+chunks = chunk_text(full_text, chunk_size=900, overlap=150)
+
+print(f"Total chunks: {len(chunks)}")
 
 ids = []
 docs = []
 metadatas = []
 embeddings = []
 
-batch_size = 16
-for i in tqdm(range(0, len(chunks), batch_size)):
-    batch = chunks[i:i+batch_size]
-    resp = client.embeddings.create(model='text-embedding-3-small', input=batch)
-    for j, item in enumerate(resp.data):
-        idx = i + j
-        ids.append(f'chunk_{idx}')
-        docs.append(batch[j])
-        metadatas.append({'source': 'mzu_docs', 'chunk': idx})
-        embeddings.append(item.embedding)
 
-collection.add(ids=ids, documents=docs, embeddings=embeddings, metadatas=metadatas)
+# -------------------------------------
+# Embed and store chunks
+# -------------------------------------
+for idx, chunk in enumerate(tqdm(chunks)):
+    vec = embedder.encode(chunk).tolist()
+
+    ids.append(f"chunk_{idx}")
+    docs.append(chunk)
+    metadatas.append({"source": "mzu_docs", "chunk": idx})
+    embeddings.append(vec)
+
+
+# Clear existing collection and re-create
+try:
+    chroma_client.delete_collection(COLLECTION_NAME)
+except:
+    pass
+
+collection = chroma_client.create_collection(COLLECTION_NAME)
+
+# Upload in single batch
+collection.add(
+    ids=ids,
+    documents=docs,
+    embeddings=embeddings,
+    metadatas=metadatas
+)
 
 try:
     chroma_client.persist()
-except Exception:
+except:
     pass
 
-print('Stored', len(ids), 'chunks in Chroma')
+print("Stored", len(ids), "chunks in Chroma (OFFLINE MODE)")
