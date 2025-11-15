@@ -1,5 +1,4 @@
-# query.py
-# Full MZU RAG: Web Scraping + Multi-Page + PDF Reading + Groq LLM
+# query.py — Fast MZU RAG with lightweight multi-page scraper
 
 import os
 import json
@@ -7,16 +6,12 @@ import numpy as np
 import requests
 from bs4 import BeautifulSoup
 
-# ==========================
-# ENV VARIABLES FROM RENDER
-# ==========================
+# ========= ENV ==========
 LLM_API_URL = os.getenv("LLM_API_URL")
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
 
-# ==========================
-# LOAD LOCAL EMBEDDINGS
-# ==========================
+# ========= LOAD EMBEDDINGS ==========
 EMB_PATH = "data/embeddings.json"
 
 if os.path.exists(EMB_PATH):
@@ -26,77 +21,40 @@ else:
     DATA = {"docs": [], "vectors": []}
 
 DOCS = DATA["docs"]
-VECS = np.array(DATA.get("vectors", []), dtype=np.float32)
-# ==========================
-# SCRAPE MZU MULTIPLE PAGES
-# ==========================
-MZU_PAGES = [
+
+
+# ========= LIGHT SCRAPER ==========
+FAST_PAGES = [
     "https://mzu.edu.in",
-    "https://mzu.edu.in/refund-policy/",
-    "https://mzu.edu.in/admission-brochures/",
     "https://mzu.edu.in/contact-us/",
-    "https://mzu.edu.in/schools-departments/",
     "https://mzu.edu.in/department-of-information-technology/",
-    "https://mzu.edu.in/department-of-computer-engineering/",
-    "https://mzu.edu.in/department-of-electronics-communication-engineering/",
-    "https://mzu.edu.in/department-of-civil-engineering-department/",
-    "https://mzu.edu.in/department-of-electrical-engineering/",
-    "https://mzu.edu.in/dean-students-welfare/",
     "https://mzu.edu.in/examination-news-results/",
-    "https://mzu.edu.in/sports/",
-    "https://stjmzu.org/index.php/journal",
     "https://mzu.edu.in/message-by-vice-chancellor/",
-    "https://mzu.edu.in/visitor/",
-    "https://mzu.edu.in/registrar/",
-    "https://lib.mzu.edu.in/",
-    "https://mzu.edu.in/certifications-accreditations/"
-    "https://mzu.edu.in/affiliated-institutes/",
-    "https://sites.google.com/mzu.edu.in/gallery?usp=sharing"
 ]
 
 def scrape_page(url):
-    """Scrape a single webpage."""
     try:
-        res = requests.get(url, timeout=8)
+        res = requests.get(url, timeout=4)
         soup = BeautifulSoup(res.text, "html.parser")
 
-        # Remove junk
         for tag in soup(["script", "style", "img", "noscript"]):
             tag.decompose()
 
         text = soup.get_text(" ")
-        text = " ".join(text.split())
-        return text
+        return " ".join(text.split())[:2000]
+
     except:
         return ""
 
 
 def scrape_live_data():
-    """Scrape multiple MZU pages + PDF links."""
-    collected = ""
-
-    # Step 1 — scrape HTML pages
-    for url in MZU_PAGES:
-        collected += scrape_page(url) + "\n\n"
-
-    # Step 2 — detect PDF links in main site
-    try:
-        res = requests.get("https://mzu.edu.in", timeout=8)
-        soup = BeautifulSoup(res.text, "html.parser")
-        pdfs = [a["href"] for a in soup.find_all("a", href=True) if a["href"].lower().endswith(".pdf")]
-
-        for link in pdfs[:5]:  # limit for safety
-            pdf_url = link if link.startswith("http") else f"https://mzu.edu.in/{link}"
-            collected += extract_pdf_text(pdf_url)
-    except:
-        pass
-
-    return collected[:8000]   # limit for LLM
+    text = ""
+    for url in FAST_PAGES:
+        text += scrape_page(url) + "\n\n"
+    return text[:4000]   # limit for speed
 
 
-# ==========================
-# LIGHTWEIGHT KEYWORD SEARCH
-# ==========================
+# ========= LIGHT RETRIEVAL ==========
 def simple_keyword_search(query, k=3):
     q_words = [w for w in query.lower().split() if len(w) > 3]
     scores = []
@@ -112,9 +70,7 @@ def simple_keyword_search(query, k=3):
     return top_docs if top_docs else DOCS[:k]
 
 
-# ==========================
-# FINAL ANSWER GENERATOR
-# ==========================
+# ========= FINAL ANSWER ==========
 def answer_query(query, k=3):
 
     offline_docs = simple_keyword_search(query, k)
@@ -122,10 +78,9 @@ def answer_query(query, k=3):
 
     system_prompt = (
         "You are the official Mizoram University Assistant. "
-        "Use the offline documents + live website data to answer. "
-        "If something is obvious or publicly known (like NIRF ranking, departments, HOD names), "
-        "you MAY use general knowledge as well. "
-        "Keep answers short, factual, and accurate."
+        "Answer using the offline text + live website data. "
+        "If publicly known (like NIRF rank, departments), you MAY use general knowledge. "
+        "Stay factual and short."
     )
 
     user_prompt = f"""
@@ -138,7 +93,7 @@ Offline documents:
 Live website data:
 {live_data}
 
-Give the BEST factual answer.
+Give a short and accurate answer.
 """
 
     headers = {
@@ -153,12 +108,12 @@ Give the BEST factual answer.
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        "temperature": 0.2,
-        "max_tokens": 500
+        "temperature": 0.25,
+        "max_tokens": 350
     }
 
     try:
-        r = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=30)
+        r = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=10)
         data = r.json()
 
         if "choices" in data:
@@ -167,4 +122,4 @@ Give the BEST factual answer.
         return str(data)
 
     except Exception as e:
-        return f"⚠ LLM Error: {e}"
+        return f"⚠ Server busy. Try again.\nError: {e}"
