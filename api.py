@@ -1,19 +1,18 @@
+# api.py
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from query import answer_query
-import traceback
 import logging
+import traceback
 
 app = Flask(__name__)
+CORS(app)
 
-# Allow GitHub Pages frontend (recommended)
-CORS(app, resources={r"/*": {"origins": "*"}})
-
-# Render-friendly logging
+# Render console logs
 logging.basicConfig(level=logging.INFO)
 
 
-@app.route("/health", methods=["GET"])
+@app.route("/health")
 def health():
     return jsonify({"status": "ok"}), 200
 
@@ -21,8 +20,7 @@ def health():
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
-        # Safely parse JSON
-        data = request.get_json(silent=True)
+        data = request.get_json(force=True)
 
         if not data or "query" not in data:
             return jsonify({"error": "No query provided"}), 400
@@ -30,11 +28,11 @@ def chat():
         query = data["query"]
         k = int(data.get("k", 3))
 
-        app.logger.info(f"[QUERY] {query}")
+        app.logger.info(f"[USER QUERY] {query}")
 
         answer = answer_query(query, k)
 
-        return jsonify({"answer": answer}), 200
+        return jsonify({"answer": answer})
 
     except Exception as e:
         traceback.print_exc()
@@ -48,9 +46,8 @@ def chat():
 def builddb():
     return jsonify({
         "status": "disabled",
-        "message": "Embedding building disabled on Render. "
-                   "Generate embeddings locally using create_embeddings_json.py"
-    }), 200
+        "message": "Embedding building must be done locally using create_embeddings_json.py"
+    })
 
 
 if __name__ == "__main__":
