@@ -1,17 +1,16 @@
-# query.py — Fast MZU RAG with lightweight multi-page scraper
+# query.py — Fast Version (works with GitHub Pages + Render Free)
 
 import os
 import json
-import numpy as np
 import requests
+import numpy as np
 from bs4 import BeautifulSoup
 
-# ========= ENV ==========
 LLM_API_URL = os.getenv("LLM_API_URL")
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
 
-# ========= LOAD EMBEDDINGS ==========
+# Load small embeddings file
 EMB_PATH = "data/embeddings.json"
 
 if os.path.exists(EMB_PATH):
@@ -23,83 +22,57 @@ else:
 DOCS = DATA["docs"]
 
 
-# ========= LIGHT SCRAPER ==========
-FAST_PAGES = [
-    "https://mzu.edu.in",
-    "https://mzu.edu.in/contact-us/",
-    "https://mzu.edu.in/department-of-information-technology/",
-    "https://mzu.edu.in/examination-news-results/",
-    "https://mzu.edu.in/message-by-vice-chancellor/"
-]
-
-def scrape_page(url):
+def scrape_mzu():
+    """FAST scrape of homepage only."""
     try:
-        res = requests.get(url, timeout=4)
+        res = requests.get("https://mzu.edu.in", timeout=4)
         soup = BeautifulSoup(res.text, "html.parser")
 
-        for tag in soup(["script", "style", "img", "noscript"]):
+        for tag in soup(["script", "style", "img"]):
             tag.decompose()
 
-        text = soup.get_text(" ")
-        return " ".join(text.split())[:2000]
-
+        text = " ".join(soup.get_text(" ").split())
+        return text[:3000]
     except:
         return ""
+    
 
-
-def scrape_live_data():
-    text = ""
-    for url in FAST_PAGES:
-        text += scrape_page(url) + "\n\n"
-    return text[:4000]   # limit for speed
-
-
-# ========= LIGHT RETRIEVAL ==========
 def simple_keyword_search(query, k=3):
-    q_words = [w for w in query.lower().split() if len(w) > 3]
+    q = query.lower()
     scores = []
 
     for i, doc in enumerate(DOCS):
-        d = doc.lower()
-        score = sum(d.count(w) for w in q_words)
+        score = sum(doc.lower().count(w) for w in q.split() if len(w) > 3)
         scores.append((score, i))
 
     scores.sort(reverse=True)
-    top_docs = [DOCS[i] for score, i in scores[:k] if score > 0]
-
-    return top_docs if top_docs else DOCS[:k]
+    return [DOCS[i] for score, i in scores[:k] if score > 0] or DOCS[:k]
 
 
-# ========= FINAL ANSWER ==========
 def answer_query(query, k=3):
 
     offline_docs = simple_keyword_search(query, k)
-    live_data = scrape_live_data()
+    live_data = scrape_mzu()
 
-    system_prompt = (
-        "You are the official Mizoram University Assistant. "
-        "Answer using the offline text + live website data. "
-        "If publicly known (like NIRF rank, departments), you MAY use general knowledge. "
-        "Stay factual and short."
-    )
+    system_prompt = "You are the official Mizoram University Assistant. Answer shortly and accurately."
 
     user_prompt = f"""
 User question:
 {query}
 
-Offline documents:
+Offline data:
 {''.join(offline_docs)}
 
-Live website data:
+Live website extract:
 {live_data}
 
-Give a short and accurate answer.
+Answer concisely.
 """
 
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
-        "Content-Type": "application/json",
-        "Groq-Version": "2024-10-14"
+        "Groq-Version": "2024-10-14",
+        "Content-Type": "application/json"
     }
 
     payload = {
@@ -113,13 +86,10 @@ Give a short and accurate answer.
     }
 
     try:
-        r = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=10)
+        r = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=8)
         data = r.json()
-
         if "choices" in data:
             return data["choices"][0]["message"]["content"]
-
         return str(data)
-
     except Exception as e:
-        return f"⚠ Server busy. Try again.\nError: {e}"
+        return f"⚠ Server busy. Try again.\n{e}"
