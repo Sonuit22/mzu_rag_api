@@ -10,17 +10,17 @@ services:
       pip install -r requirements.txt
 
     startCommand: |
-      gunicorn api:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+      gunicorn api:app --bind 0.0.0.0:$PORT --workers 1 --timeout 180
 
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.13
 
       - key: LLM_API_URL
-        value: https://api.groq.com/openai/v1/chat/completions
+        sync: false
 
       - key: LLM_API_KEY
         sync: false
 
       - key: LLM_MODEL
-        value: llama-3.1-8b-instant   # ✅ FIXED MODEL NAME
+        value: llama-3.1-8b-instant

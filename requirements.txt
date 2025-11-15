@@ -6,3 +6,4 @@ numpy
 tqdm
 python-dotenv
 gunicorn
+PyMuPDF==1.23.7

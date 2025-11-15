@@ -1,15 +1,14 @@
-# api.py
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from query import answer_query
-import logging
 import traceback
+import logging
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Render console logs
-logging.basicConfig(level=logging.INFO)
+# Better logging
+logging.basicConfig(level=logging.INFO, format='[API] %(message)s')
 
 
 @app.route("/health")
@@ -23,31 +22,30 @@ def chat():
         data = request.get_json(force=True)
 
         if not data or "query" not in data:
-            return jsonify({"error": "No query provided"}), 400
+            return jsonify({"answer": "⚠ No query provided"}), 200
 
         query = data["query"]
         k = int(data.get("k", 3))
 
-        app.logger.info(f"[USER QUERY] {query}")
+        app.logger.info(f"Query received → {query}")
 
         answer = answer_query(query, k)
 
-        return jsonify({"answer": answer})
+        return jsonify({"answer": answer}), 200
 
     except Exception as e:
         traceback.print_exc()
         return jsonify({
-            "error": "internal_error",
-            "details": str(e)
-        }), 500
+            "answer": f"⚠ Internal server error: {e}"
+        }), 200
 
 
 @app.route("/builddb", methods=["POST"])
 def builddb():
     return jsonify({
         "status": "disabled",
-        "message": "Embedding building must be done locally using create_embeddings_json.py"
-    })
+        "message": "Embedding building is disabled on Render (local only)"
+    }), 200
 
 
 if __name__ == "__main__":
