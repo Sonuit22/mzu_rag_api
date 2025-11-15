@@ -6,7 +6,6 @@ import json
 import numpy as np
 import requests
 from bs4 import BeautifulSoup
-import fitz  # PyMuPDF (for PDFs)
 
 # ==========================
 # ENV VARIABLES FROM RENDER
@@ -28,26 +27,6 @@ else:
 
 DOCS = DATA["docs"]
 VECS = np.array(DATA.get("vectors", []), dtype=np.float32)
-
-
-# ==========================
-# PDF TEXT EXTRACTION
-# ==========================
-def extract_pdf_text(url):
-    """Download and read PDF content."""
-    try:
-        r = requests.get(url, timeout=10)
-        pdf = fitz.open(stream=r.content, filetype="pdf")
-
-        txt = ""
-        for page in pdf:
-            txt += page.get_text()
-
-        return txt
-    except:
-        return ""
-
-
 # ==========================
 # SCRAPE MZU MULTIPLE PAGES
 # ==========================
