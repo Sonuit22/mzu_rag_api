@@ -1,134 +1,100 @@
-# query.py  (FULLY UPDATED – NO OPENAI, FREE, SCRAPING + RAG)
+# query.py
+# Lightweight RAG for Render — no heavy ML libraries
 
 import os
-import requests
-import chromadb
-from bs4 import BeautifulSoup
-from sentence_transformers import SentenceTransformer
+import json
 import numpy as np
+import requests
+from bs4 import BeautifulSoup
 
-# -----------------------------
-# Load ENV variables
-# -----------------------------
-LLM_API_URL = os.getenv("LLM_API_URL")  # e.g., https://api.groq.com/openai/v1/chat/completions
-LLM_API_KEY = os.getenv("LLM_API_KEY")  # your Groq / HF key
-LLM_MODEL   = os.getenv("LLM_MODEL", "llama3-8b")
+# LLM variables from Render
+LLM_API_URL = os.getenv("LLM_API_URL")
+LLM_API_KEY = os.getenv("LLM_API_KEY")
+LLM_MODEL = os.getenv("LLM_MODEL", "llama3-8b")
 
-if not LLM_API_URL:
-    raise ValueError("❌ LLM_API_URL not set in environment")
-if not LLM_API_KEY:
-    raise ValueError("❌ LLM_API_KEY not set in environment")
+# Load precomputed embeddings
+EMB_PATH = "data/embeddings.json"
 
-# -----------------------------
-# Embedding Model (offline)
-# -----------------------------
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
+if os.path.exists(EMB_PATH):
+    with open(EMB_PATH, "r", encoding="utf-8") as f:
+        DATA = json.load(f)
+else:
+    DATA = {"ids": [], "docs": [], "vectors": []}
 
-# -----------------------------
-# Chroma Vector DB
-# -----------------------------
-chroma_client = chromadb.PersistentClient(path="./chroma_db")
+DOCS = DATA["docs"]
+VECS = np.array(DATA["vectors"], dtype=np.float32)
 
-try:
-    collection = chroma_client.get_collection("mzu_knowledge")
-except:
-    collection = chroma_client.create_collection("mzu_knowledge")
-
-# -----------------------------
-# LIVE Web Scraper (safe)
-# -----------------------------
 def scrape_mzu():
-    url = "https://mzu.edu.in"
+    """Scrape mzu.edu.in home page text."""
     try:
-        r = requests.get(url, timeout=8)
-        r.raise_for_status()
-
-        soup = BeautifulSoup(r.text, "html.parser")
-        for tag in soup(["script", "style", "noscript"]):
-            tag.extract()
-
+        res = requests.get("https://mzu.edu.in", timeout=7)
+        soup = BeautifulSoup(res.text, "html.parser")
+        for s in soup(["script", "style", "img"]):
+            s.decompose()
         text = soup.get_text(separator=" ")
-        text = " ".join(text.split())   # remove extra spaces
-        return text[:5000]              # limit chars to avoid overload
+        text = " ".join(text.split())
+        return text[:4000]
     except:
-        return "Live data unavailable."
+        return ""
 
-# -----------------------------
-# Query Function
-# -----------------------------
+def simple_keyword_search(query, k=3):
+    """Lightweight keyword-based RAG search."""
+    q = query.lower()
+    scores = []
+
+    for i, doc in enumerate(DOCS):
+        d = doc.lower()
+        score = sum(d.count(w) for w in q.split() if len(w) > 3)
+        scores.append((score, i))
+
+    scores.sort(reverse=True)
+    top_docs = [DOCS[i] for score, i in scores[:k] if score > 0]
+
+    if not top_docs:
+        top_docs = DOCS[:k]
+
+    return top_docs
+
 def answer_query(query, k=3):
+    """RAG → LLM final answer."""
+    offline_docs = simple_keyword_search(query, k)
+    live = scrape_mzu()
 
-    # 1) Embed user query
-    q_vec = embedder.encode(query).tolist()
+    system_prompt = "You are the MZU University Assistant. Answer using the provided documents."
+    user_prompt = f"""
+User question: {query}
 
-    # 2) Search in RAG DB
-    results = collection.query(
-        query_embeddings=[q_vec],
-        n_results=k
-    )
+Offline context:
+{''.join(offline_docs)}
 
-    docs = results.get("documents", [[]])[0]
-    sources = results.get("metadatas", [[]])[0]
+Live website extract:
+{live}
 
-    rag_context = "\n\n".join(
-        f"[Source: {src.get('source','mzu')}]\n{doc}"
-        for doc, src in zip(docs, sources)
-    )
-
-    # 3) Live scrape
-    live_data = scrape_mzu()
-
-    # 4) Build prompt
-    final_prompt = f"""
-You are the Official MZU Assistant.
-
-Use the OFFLINE knowledge base + LIVE scraped website data to answer.
-
-OFFLINE RAG DATA:
-{rag_context}
-
-LIVE SCRAPED DATA:
-{live_data}
-
-QUESTION:
-{query}
-
-Give a clear, short, factual answer. 
-If unsure, say "Information not available".
+Give a short, factual answer.
 """
 
-    # 5) Call free LLM provider (Groq / HF / local server)
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    body = {
+    payload = {
         "model": LLM_MODEL,
         "messages": [
-            {"role": "system", "content": "You are the MZU Assistant."},
-            {"role": "user", "content": final_prompt}
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
         ],
-        "max_tokens": 500,
-        "temperature": 0.1
+        "temperature": 0.2,
+        "max_tokens": 400
     }
 
-    response = requests.post(LLM_API_URL, json=body, headers=headers, timeout=30)
-    response.raise_for_status()
-
-    data = response.json()
-
-    # Extract answer from any OpenAI-style API
     try:
-        answer = data["choices"][0]["message"]["content"]
-    except:
-        answer = str(data)
+        r = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=30)
+        data = r.json()
 
-    return answer
+        if "choices" in data and len(data["choices"]) > 0:
+            return data["choices"][0]["message"]["content"]
 
-
-# -------------- TEST MODE ----------------
-if __name__ == "__main__":
-    while True:
-        q = input("\nAsk MZU Bot: ")
-        print("\nAnswer:", answer_query(q), "\n")
+        return str(data)
+    except Exception as e:
+        return f"⚠ LLM Error: {e}"
