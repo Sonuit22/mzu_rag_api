@@ -1,16 +1,25 @@
-# query.py — Fast Version (works with GitHub Pages + Render Free)
+# query.py — Updated Version (Local RAG + Fallback + Lightweight)
 
 import os
 import json
 import requests
 import numpy as np
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
+load_dotenv()
+
+# -----------------------------
+# ENV
+# -----------------------------
 LLM_API_URL = os.getenv("LLM_API_URL")
 LLM_API_KEY = os.getenv("LLM_API_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
+SIM_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.40))
 
-# Load small embeddings file
+# -----------------------------
+# LOAD EMBEDDINGS
+# -----------------------------
 EMB_PATH = "data/embeddings.json"
 
 if os.path.exists(EMB_PATH):
@@ -19,39 +28,81 @@ if os.path.exists(EMB_PATH):
 else:
     DATA = {"docs": [], "vectors": []}
 
-DOCS = DATA["docs"]
+DOCS = DATA.get("docs", [])
+VECS = DATA.get("vectors", [])
 
 
+# -----------------------------
+# COSINE SIMILARITY
+# -----------------------------
+def cosine(a, b):
+    a = np.array(a, dtype=float)
+    b = np.array(b, dtype=float)
+    if np.linalg.norm(a) == 0 or np.linalg.norm(b) == 0:
+        return 0
+    return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+
+# -----------------------------
+# SCRAPE MZU HOMEPAGE (fallback)
+# -----------------------------
 def scrape_mzu():
-    """FAST scrape of homepage only."""
     try:
         res = requests.get("https://mzu.edu.in", timeout=4)
         soup = BeautifulSoup(res.text, "html.parser")
-
         for tag in soup(["script", "style", "img"]):
             tag.decompose()
-
         text = " ".join(soup.get_text(" ").split())
         return text[:3000]
     except:
         return ""
-    
 
-def simple_keyword_search(query, k=3):
-    q = query.lower()
+
+# -----------------------------
+# LOCAL EMBEDDING (MATCHES CREATE_EMBEDDINGS)
+# -----------------------------
+from sentence_transformers import SentenceTransformer
+embedder = SentenceTransformer("paraphrase-MiniLM-L6-v2")
+
+def embed_query(text):
+    """Generate embedding for user query (LOCAL MINI LM)"""
+    try:
+        return embedder.encode(text).tolist()
+    except:
+        return None
+
+
+def local_search(query):
+    """Return best matching local chunk using cosine similarity"""
+    if not DOCS or not VECS:
+        return None, 0.0
+
+    qvec = embed_query(query)
+    if qvec is None:
+        return None, 0.0
+
     scores = []
-
-    for i, doc in enumerate(DOCS):
-        score = sum(doc.lower().count(w) for w in q.split() if len(w) > 3)
-        scores.append((score, i))
+    for i, vec in enumerate(VECS):
+        sim = cosine(qvec, vec)
+        scores.append((sim, DOCS[i]))
 
     scores.sort(reverse=True)
-    return [DOCS[i] for score, i in scores[:k] if score > 0] or DOCS[:k]
+    best_sim, best_doc = scores[0]
+    return best_doc, best_sim
 
 
-def answer_query(query, k=3):
+# -----------------------------
+# MAIN ANSWER FUNCTION
+# -----------------------------
+def answer_query(query):
+    # 1) Try LOCAL DATA FIRST
+    local_answer, score = local_search(query)
 
-    offline_docs = simple_keyword_search(query, k)
+    if score >= SIM_THRESHOLD:
+        return f"📘 **Local Data Answer:**\n{local_answer}"
+
+    # 2) FALLBACK: scrape + LLM
+    offline_docs = DOCS[:3]  # small context
     live_data = scrape_mzu()
 
     system_prompt = "You are the official Mizoram University Assistant. Answer shortly and accurately."
@@ -60,13 +111,16 @@ def answer_query(query, k=3):
 User question:
 {query}
 
-Offline data:
-{''.join(offline_docs)}
+Local data top match (score={score:.2f}):
+{local_answer}
+
+Offline docs:
+{" ".join(offline_docs)}
 
 Live website extract:
 {live_data}
 
-Answer concisely.
+If you don't know, say you don't know.
 """
 
     headers = {

@@ -1,4 +1,5 @@
 import os
+import json
 from pathlib import Path
 
 
@@ -8,7 +9,7 @@ def ensure_dirs():
     Path('data').mkdir(parents=True, exist_ok=True)
 
 
-# Run once on import
+# Run once when imported
 ensure_dirs()
 
 
@@ -22,3 +23,12 @@ def read_file(path):
 def write_file(path, text):
     with open(path, 'w', encoding='utf-8') as f:
         f.write(text)
+
+
+# Load JSON embeddings safely (needed for RAG search)
+def load_embeddings(path='data/embeddings.json'):
+    if not os.path.exists(path):
+        return {"ids": [], "docs": [], "vectors": []}
+
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.load(f)

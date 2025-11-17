@@ -3,6 +3,5 @@ flask-cors
 requests
 beautifulsoup4
 numpy
-tqdm
 python-dotenv
 gunicorn
