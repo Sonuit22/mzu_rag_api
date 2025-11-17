@@ -1,12 +1,14 @@
-# query.py — Hybrid Local RAG + LLM fallback (precise answers)
+# query.py — Perfect Accuracy Version (Knowledge → RAG → LLM)
 
 import os
 import json
 import requests
 import numpy as np
+import re
+import difflib
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-import re
+import string
 
 load_dotenv()
 
@@ -15,6 +17,74 @@ LLM_API_KEY = os.getenv("LLM_API_KEY")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.1-8b-instant")
 SIM_THRESHOLD = float(os.getenv("SIMILARITY_THRESHOLD", 0.01))
 
+
+# ============================================================
+# 1) LOAD KNOWLEDGE JSON (TOP PRIORITY)
+# ============================================================
+KB_PATH = "data/knowledge.json"
+if os.path.exists(KB_PATH):
+    with open(KB_PATH, "r", encoding="utf-8") as f:
+        KB = json.load(f)
+else:
+    KB = {}
+
+# Normalize keys
+KB_NORM = {key.lower().strip(): value for key, value in KB.items()}
+
+
+# ============================================================
+# TEXT NORMALIZATION
+# ============================================================
+def norm(t):
+    t = t.lower()
+    t = t.translate(str.maketrans("", "", string.punctuation))
+    return " ".join(t.split())
+
+
+def tokens(t):
+    return [w for w in norm(t).split() if len(w) > 2]
+
+
+# ============================================================
+# 2) KNOWLEDGE BASE SEARCH
+# ============================================================
+def search_kb(query):
+    q = norm(query)
+
+    # exact match
+    if q in KB_NORM:
+        return KB_NORM[q]
+
+    # partial match (key inside query)
+    for key in KB_NORM:
+        if key in q:
+            return KB_NORM[key]
+
+    # fuzzy match (high similarity only)
+    keys = list(KB_NORM.keys())
+    match = difflib.get_close_matches(q, keys, n=1, cutoff=0.85)
+    if match:
+        return KB_NORM[match[0]]
+
+    # token overlap with key (≥ 60%)
+    qtok = set(tokens(q))
+    if not qtok:
+        return None
+
+    for key in keys:
+        ktok = set(tokens(key))
+        if not ktok:
+            continue
+        overlap = len(qtok & ktok) / len(ktok)
+        if overlap >= 0.6:
+            return KB_NORM[key]
+
+    return None
+
+
+# ============================================================
+# 3) LOAD EMBEDDINGS (SECOND PRIORITY)
+# ============================================================
 EMB_PATH = "data/embeddings.json"
 if os.path.exists(EMB_PATH):
     with open(EMB_PATH, "r", encoding="utf-8") as f:
@@ -24,10 +94,12 @@ else:
 
 DOCS = DATA.get("docs", [])
 VECS = DATA.get("vectors", [])
+DOCS_NORM = [norm(d) for d in DOCS]
 
-# Precompute lowercase versions for fast text matching
-DOCS_LC = [d.lower() for d in DOCS]
 
+# ============================================================
+# VECTOR UTILS
+# ============================================================
 def cosine(a, b):
     a = np.array(a, dtype=float)
     b = np.array(b, dtype=float)
@@ -35,167 +107,149 @@ def cosine(a, b):
         return 0.0
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-def scrape_mzu():
-    try:
-        res = requests.get("https://mzu.edu.in", timeout=4)
-        soup = BeautifulSoup(res.text, "html.parser")
-        for tag in soup(["script", "style", "img"]):
-            tag.decompose()
-        text = " ".join(soup.get_text(" ").split())
-        return text[:3000]
-    except:
-        return ""
 
 def embed_query(text):
     vec = np.zeros(300)
-    for w in text.lower().split():
+    for w in tokens(text):
         vec[hash(w) % 300] += 1
     return vec.tolist()
 
-def extract_best_sentence(query, chunk_text):
-    q = query.lower()
-    keywords = [w for w in re.findall(r"[a-zA-Z0-9]+", q) if len(w) > 3]
-    # split chunk into lines first
-    candidates = [p.strip() for p in re.split(r"\n|;|-|\u2022", chunk_text) if p.strip()]
-    if len(candidates) < 3:
-        for s in re.split(r"(?<=[.!?])\s+", chunk_text):
-            s = s.strip()
-            if s:
-                candidates.append(s)
-    def score_text(t):
-        tl = t.lower()
-        score = 0
-        for k in keywords:
-            score += tl.count(k)
-        length_penalty = max(0, (len(t.split()) - 40) / 40)
-        return score - length_penalty
-    scored = [(score_text(c), c) for c in candidates]
-    scored.sort(reverse=True, key=lambda x: x[0])
-    if scored and scored[0][0] > 0:
-        best = scored[0][1]
-        words = best.split()
-        if len(words) > 40:
-            return " ".join(words[:40]) + "..."
-        return best
-    m = re.search(r"(VC of [^,.\n]+|Vice[- ]Chancellor[^,.\n]+|Head of Department[^,.\n]+|NIRF Ranking[^,.\n]+)", chunk_text, re.IGNORECASE)
-    if m:
-        return m.group(0).strip()
-    first_line = candidates[0] if candidates else chunk_text
-    words = first_line.split()
-    if len(words) > 40:
-        return " ".join(words[:40]) + "..."
-    return first_line
 
-# ------------------------
-# New: exact / synonym mapping and simple substring search
-# ------------------------
-SYNONYMS = {
-    "vc": ["vice-chancellor", "vice chancellor", "vc", "vicechancellor"],
-    "hod": ["head of department", "hod", "head of dept", "head of"],
-    "dean": ["dean", "dean, school", "dean of"],
-    "nirf": ["nirf", "ranking"],
-    "naac": ["naac"],
-    "hostel": ["hostel", "hostels", "hall of residence"],
-    "placement": ["placement", "placed", "package"],
-    "contact": ["contact", "email", "phone"],
-    "library": ["library", "rfid", "books"],
-    "students": ["student", "students", "undergraduate", "postgraduate", "doctoral"],
-}
-
+# ============================================================
+# SIMPLE KEYWORD SEARCH (STRICT)
+# ============================================================
 def simple_keyword_search(query):
-    q = query.lower()
-    # 1) direct substring match (highest priority)
-    for i, d in enumerate(DOCS_LC):
-        if q in d:
-            return DOCS[i], 1.0  # perfect match
-    # 2) synonyms-based match (map short queries like "vc" -> find chunk containing vice chancellor)
-    for key, tokens in SYNONYMS.items():
-        for tok in tokens:
-            if tok in q:
-                # find chunk that contains any of the tokens
-                for i, d in enumerate(DOCS_LC):
-                    if any(t in d for t in tokens):
-                        return DOCS[i], 0.9
-    # 3) token-overlap scoring (fast deterministic fallback before vectors)
-    q_words = [w for w in re.findall(r"[a-zA-Z0-9]+", q) if len(w) > 3]
-    if not q_words:
+    qtok = set(tokens(query))
+    if not qtok:
         return None, 0.0
-    scores = []
-    for i, d in enumerate(DOCS_LC):
-        score = sum(d.count(w) for w in q_words)
-        scores.append((score, i))
-    scores.sort(reverse=True)
-    best_score, best_idx = scores[0]
-    if best_score > 0:
-        return DOCS[best_idx], float(best_score)
+
+    best_idx = None
+    best_score = 0
+
+    for i, d in enumerate(DOCS_NORM):
+        dtok = set(tokens(d))
+        if not dtok:
+            continue
+
+        overlap = len(qtok & dtok) / len(qtok)  # ratio match
+        if overlap > best_score:
+            best_score = overlap
+            best_idx = i
+
+    if best_score >= 0.5:  # require ≥50% token match
+        return DOCS[best_idx], best_score
+
     return None, 0.0
 
-def local_search(query):
-    # 1) Try simple deterministic search first
-    doc, score = simple_keyword_search(query)
-    if doc is not None and score > 0:
-        # return early with high confidence (we'll still extract a concise sentence)
-        return doc, score
-    # 2) vector cosine fallback
-    if not DOCS or not VECS:
+
+# ============================================================
+# VECTOR SEARCH
+# ============================================================
+def vector_search(query):
+    if not VECS:
         return None, 0.0
+
     qvec = embed_query(query)
-    scores = []
-    for i, vec in enumerate(VECS):
-        sim = cosine(qvec, vec)
-        scores.append((sim, i))
-    scores.sort(reverse=True, key=lambda x: x[0])
-    best_sim, best_idx = scores[0]
-    best_doc = DOCS[best_idx] if best_idx is not None and best_idx < len(DOCS) else None
-    return best_doc, float(best_sim)
+    sims = [(cosine(qvec, v), i) for i, v in enumerate(VECS)]
+    sims.sort(reverse=True)
 
+    best_sim, idx = sims[0]
+    return DOCS[idx], best_sim
+
+
+# ============================================================
+# BEST SENTENCE EXTRACTION
+# ============================================================
+def extract_best_sentence(query, chunk):
+    qtok = set(tokens(query))
+
+    lines = [x.strip() for x in re.split(r"\n|;|-|\u2022|\.", chunk) if x.strip()]
+    if not lines:
+        return chunk[:80] + "..."
+
+    best = None
+    best_score = -999
+
+    for line in lines:
+        lt = norm(line)
+        ltok = set(tokens(lt))
+        if not ltok:
+            continue
+
+        overlap = len(qtok & ltok) / len(qtok)
+        length_penalty = len(line.split()) / 35.0
+        score = overlap - length_penalty
+
+        if score > best_score:
+            best_score = score
+            best = line
+
+    if not best:
+        return lines[0][:60] + "..."
+
+    words = best.split()
+    return " ".join(words[:30]) + ("..." if len(words) > 30 else "")
+
+
+# ============================================================
+# SCRAPE WEBSITE (FALLBACK)
+# ============================================================
+def scrape_mzu():
+    try:
+        r = requests.get("https://mzu.edu.in", timeout=4)
+        soup = BeautifulSoup(r.text, "html.parser")
+        for t in soup(["script", "style", "img"]):
+            t.decompose()
+        return " ".join(soup.get_text(" ").split())[:3000]
+    except:
+        return ""
+
+
+# ============================================================
+# FINAL ANSWER PIPELINE
+# ============================================================
 def answer_query(query):
-    # local search
-    local_chunk, score = local_search(query)
-    # If simple search returned an integer count (token overlap) we treat it as match
-    # For substring/synonym we returned 0.9/1.0 which is already > SIM_THRESHOLD
-    if local_chunk and (score >= SIM_THRESHOLD or isinstance(score, float) and score >= 0.1):
-        # extract short sentence for human-like response
-        short = extract_best_sentence(query, local_chunk)
-        return f"📘 Local Data Answer:\n{short}"
-    # fallback to scraping + LLM
-    offline_docs = DOCS[:3]
-    live_data = scrape_mzu()
-    system_prompt = "You are the official Mizoram University Assistant. Answer shortly and accurately."
-    user_prompt = f"""
-User question:
-{query}
 
-Local data best match (score={score:.2f}):
-{local_chunk}
+    # 1) KNOWLEDGE JSON (perfect)
+    kb = search_kb(query)
+    if kb:
+        return f"{kb}"
 
-Small offline context:
-{" ".join(offline_docs)}
+    # 2) SIMPLE KEYWORD SEARCH (strict)
+    doc, score = simple_keyword_search(query)
+    if doc and score >= 0.5:
+        return extract_best_sentence(query, doc)
 
-Live website extract:
-{live_data}
+    # 3) VECTOR SEARCH
+    vdoc, vscore = vector_search(query)
+    if vdoc and vscore >= SIM_THRESHOLD:
+        return extract_best_sentence(query, vdoc)
 
-If you don't know, say you don't know.
-"""
+    # 4) LLM FALLBACK
+    offline = " ".join(DOCS[:3])
+    live = scrape_mzu()
+
+    payload = {
+        "model": LLM_MODEL,
+        "messages": [
+            {"role": "system", "content": "Answer briefly and accurately."},
+            {"role": "user", "content": f"Question: {query}\nOffline: {offline}\nWebsite: {live}"}
+        ],
+        "temperature": 0.2,
+        "max_tokens": 200
+    }
+
     headers = {
         "Authorization": f"Bearer {LLM_API_KEY}",
         "Groq-Version": "2024-10-14",
         "Content-Type": "application/json"
     }
-    payload = {
-        "model": LLM_MODEL,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        "temperature": 0.2,
-        "max_tokens": 350
-    }
+
     try:
         r = requests.post(LLM_API_URL, json=payload, headers=headers, timeout=10)
         data = r.json()
         if "choices" in data:
             return data["choices"][0]["message"]["content"]
-        return str(data)
-    except Exception as e:
-        return f"⚠ Server busy. Try again.\n{e}"
+        return "I couldn't fetch a proper answer."
+    except:
+        return "Website unreachable. Try again later."
