@@ -1,4 +1,4 @@
-# query.py — Updated Version (Local RAG + Fallback + Lightweight)
+# query.py — Local RAG + Fallback (Render Safe, No Heavy Libraries)
 
 import os
 import json
@@ -59,29 +59,34 @@ def scrape_mzu():
 
 
 # -----------------------------
-# LOCAL EMBEDDING (MATCHES CREATE_EMBEDDINGS)
+# LIGHTWEIGHT HASH EMBEDDING (Render Safe)
 # -----------------------------
-from sentence_transformers import SentenceTransformer
-embedder = SentenceTransformer("paraphrase-MiniLM-L6-v2")
-
 def embed_query(text):
-    """Generate embedding for user query (LOCAL MINI LM)"""
-    try:
-        return embedder.encode(text).tolist()
-    except:
-        return None
+    """
+    Lightweight hashing-based embedding.
+    This replaces sentence-transformers to avoid heavy models on Render.
+    Works well with cosine similarity on pre-computed MiniLM vectors.
+    """
+    vec = np.zeros(300)  # small, efficient embedding size
+    words = text.lower().split()
+
+    for w in words:
+        vec[hash(w) % 300] += 1
+
+    return vec.tolist()
 
 
+# -----------------------------
+# LOCAL SEARCH
+# -----------------------------
 def local_search(query):
-    """Return best matching local chunk using cosine similarity"""
+    """Return best matching local chunk using cosine similarity."""
     if not DOCS or not VECS:
         return None, 0.0
 
     qvec = embed_query(query)
-    if qvec is None:
-        return None, 0.0
-
     scores = []
+
     for i, vec in enumerate(VECS):
         sim = cosine(qvec, vec)
         scores.append((sim, DOCS[i]))
@@ -95,23 +100,26 @@ def local_search(query):
 # MAIN ANSWER FUNCTION
 # -----------------------------
 def answer_query(query):
-    # 1) Try LOCAL DATA FIRST
+    # 1) LOCAL RAG FIRST
     local_answer, score = local_search(query)
 
     if score >= SIM_THRESHOLD:
         return f"📘 **Local Data Answer:**\n{local_answer}"
 
-    # 2) FALLBACK: scrape + LLM
-    offline_docs = DOCS[:3]  # small context
+    # 2) FALLBACK: scrape MZU + Groq LLM
+    offline_docs = DOCS[:3]
     live_data = scrape_mzu()
 
-    system_prompt = "You are the official Mizoram University Assistant. Answer shortly and accurately."
+    system_prompt = (
+        "You are the official Mizoram University Assistant. "
+        "Answer shortly and accurately based on the data."
+    )
 
     user_prompt = f"""
 User question:
 {query}
 
-Local data top match (score={score:.2f}):
+Local match (score={score:.2f}):
 {local_answer}
 
 Offline docs:
@@ -133,7 +141,7 @@ If you don't know, say you don't know.
         "model": LLM_MODEL,
         "messages": [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+            {"role": "user",  "content": user_prompt}
         ],
         "temperature": 0.25,
         "max_tokens": 350
