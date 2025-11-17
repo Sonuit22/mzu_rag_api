@@ -1,6 +1,5 @@
 # create_embeddings.py — HASH EMBEDDINGS (Render Safe)
 
-import os
 import json
 import numpy as np
 from utils import read_file
@@ -20,12 +19,18 @@ chunks = chunk_text(text, chunk_size=900, overlap=150)
 
 ids, docs, vectors = [], [], []
 
+print(f"Total chunks created: {len(chunks)}")
+
 for i, chunk in enumerate(chunks):
     ids.append(f"chunk_{i}")
     docs.append(chunk)
     vectors.append(embed_hash(chunk))
 
-payload = {"ids": ids, "docs": docs, "vectors": vectors}
+payload = {
+    "ids": ids,
+    "docs": docs,
+    "vectors": vectors
+}
 
 with open(OUT_PATH, "w", encoding="utf-8") as f:
     json.dump(payload, f, indent=2, ensure_ascii=False)
