@@ -1,42 +1,31 @@
-# create_embeddings.py
-# Generate embeddings locally (NO OPENAI REQUIRED)
+# create_embeddings.py — HASH EMBEDDINGS (Render Safe)
 
 import os
 import json
-from sentence_transformers import SentenceTransformer
+import numpy as np
 from utils import read_file
 from chunk import chunk_text
-
-MODEL_NAME = "paraphrase-MiniLM-L6-v2"  # lightweight, no GPU required
-embedder = SentenceTransformer(MODEL_NAME)
 
 DATA_PATH = "data/mzu_raw.txt"
 OUT_PATH = "data/embeddings.json"
 
-# 1. Load text
-text = read_file(DATA_PATH)
+def embed_hash(text):
+    vec = np.zeros(300)
+    for w in text.lower().split():
+        vec[hash(w) % 300] += 1
+    return vec.tolist()
 
-# 2. Chunk text
+text = read_file(DATA_PATH)
 chunks = chunk_text(text, chunk_size=900, overlap=150)
-print(f"Total chunks created: {len(chunks)}")
 
 ids, docs, vectors = [], [], []
 
-# 3. Encode locally
 for i, chunk in enumerate(chunks):
-    vec = embedder.encode(chunk).tolist()
     ids.append(f"chunk_{i}")
     docs.append(chunk)
-    vectors.append(vec)
+    vectors.append(embed_hash(chunk))
 
-# 4. Save embeddings.json
-payload = {
-    "ids": ids,
-    "docs": docs,
-    "vectors": vectors
-}
-
-os.makedirs("data", exist_ok=True)
+payload = {"ids": ids, "docs": docs, "vectors": vectors}
 
 with open(OUT_PATH, "w", encoding="utf-8") as f:
     json.dump(payload, f, indent=2, ensure_ascii=False)

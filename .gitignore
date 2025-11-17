@@ -5,10 +5,6 @@
 chroma_db/
 chromadb_store/
 
-# Raw extracted text
-
-
-
 # PDF source documents
 mzu_docs/
 
