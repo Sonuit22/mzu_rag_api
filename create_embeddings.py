@@ -14,8 +14,13 @@ def embed_hash(text):
         vec[hash(w) % 300] += 1
     return vec.tolist()
 
+# 1. Load text
 text = read_file(DATA_PATH)
-chunks = chunk_text(text, chunk_size=900, overlap=150)
+
+# 2. Chunk text
+chunks = chunk_text(text)
+print(f"Total chunks created: {len(chunks)}")
+
 
 ids, docs, vectors = [], [], []
 

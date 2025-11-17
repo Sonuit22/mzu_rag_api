@@ -1,28 +1,17 @@
-# chunk.py — clean text chunker for embeddings
+# chunk.py — line-based chunking (best for structured facts)
 
-def chunk_text(text, chunk_size=500, overlap=100):
+def chunk_text(text):
     """
-    Splits text into overlapping chunks.
-    - chunk_size: number of words per chunk
-    - overlap: repeated words between chunks
+    Splits text into chunks separated by blank lines.
+    Each block becomes one chunk.
     """
-    words = text.split()
-    n = len(words)
+    raw_blocks = text.split("\n\n")  # split on blank line
 
-    if n == 0:
-        return []
-
+    # Clean blocks
     chunks = []
-    start = 0
-
-    while start < n:
-        end = start + chunk_size
-        chunk_words = words[start:end]
-        chunks.append(" ".join(chunk_words))
-
-        # next chunk starts overlap before the end
-        start = end - overlap
-        if start < 0:
-            start = 0
+    for block in raw_blocks:
+        block = block.strip()
+        if len(block) > 5:  # avoid tiny lines
+            chunks.append(block)
 
     return chunks
