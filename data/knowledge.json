@@ -14,9 +14,9 @@
   "head of department it": "Dr. Lalhmingliana",
   "hod of it": "Dr. Lalhmingliana",
 
-  "it faculty": "Dr. R. Chawngsangpuii, Dr. R. Lalchhanhima, Dr. Morrel V.L Nunsanga, Mrs. Vanlalmuansangi Khenglawt",
-  "faculty it": "Dr. R. Chawngsangpuii, Dr. R. Lalchhanhima, Dr. Morrel V.L Nunsanga, Mrs. Vanlalmuansangi Khenglawt",
-  "department of it faculty": "Dr. R. Chawngsangpuii, Dr. R. Lalchhanhima, Dr. Morrel V.L Nunsanga, Mrs. Vanlalmuansangi Khenglawt",
+  "it faculty": "Dr. R. Chawngsangpuii, Dr. R. Lalchhanhima, Dr. Morrel V.L Nunsanga, DR. Vanlalmuansangi Khenglawt",
+  "faculty it": "Dr. R. Chawngsangpuii, Dr. R. Lalchhanhima, Dr. Morrel V.L Nunsanga, Dr. Vanlalmuansangi Khenglawt",
+  "department of it faculty": "Dr. R. Chawngsangpuii, Dr. R. Lalchhanhima, Dr. Morrel V.L Nunsanga, Dr. Vanlalmuansangi Khenglawt",
 
   "dean set": "Prof. Reshmi Maity",
   "dean school of engineering": "Prof. Reshmi Maity",
@@ -27,13 +27,13 @@
 
   "nirf": "77 (2024). Overall ranking band 101–150 in 2023.",
   "nirf 2024": "77",
-  "nirf 2023": "101–150 band",
+ 
 
   "naac": "A+ Grade (2025 Cycle)",
   "naac accreditation": "A+ Grade (2025 Cycle)",
 
-  "hostel": "6 main hostels + 9 Girls’ Hostels + 9 Boys’ Hostels",
-  "hostels": "6 main hostels + 9 Girls’ Hostels + 9 Boys’ Hostels",
+  "hostel": "9 Girls’ Hostels + 9 Boys’ Hostels",
+  "hostels": "9 Girls’ Hostels + 9 Boys’ Hostels",
   "hall of residence": "9 Girls’ Hostels + 9 Boys’ Hostels",
 
   "departments": "35 academic departments",
@@ -42,8 +42,8 @@
   "established": "Founded in 2001",
   "established year": "2001",
 
-  "location": "Tanhril, Aizawl, Mizoram",
-  "mzu location": "Tanhril, Aizawl, Mizoram",
+  "location": "Tanhril, Aizawl, Mizoram (79604)",
+  "mzu location": "Tanhril, Aizawl, Mizoram (796004)",
 
   "website": "https://mzu.edu.in",
   "official website": "https://mzu.edu.in",
@@ -71,7 +71,7 @@
   "mzu contact": "Email: info@mzu.edu.in, Phone: +91-389-2330654",
 
   "student union": "Mizoram University Students Council (MZUSC) — organizes Freshers’ Day and Vibrio Festival",
-  "mzus": "Mizoram University Students Council (MZUSC)",
+  "mzusc": "Mizoram University Students Council (MZUSC)",
 
   "academic staff": "246 faculty members",
   "total students": "3,132 students",
@@ -83,5 +83,13 @@
   
   "motto": "Greater Deeds Remain",
   "affiliation": "UGC, NAAC, AIU",
-  "parent organization": "North-Eastern Hill University (NEHU), Meghalaya"
+  "parent organization": "North-Eastern Hill University (NEHU), Meghalaya",
+
+  "dean of student's welfare": "Dean, Students’ Welfare: Dr. R. LALCHHANHIMA, Email: dean.sw@mzu.edu.in",
+
+  "central library": "Central Library, Mizoram University is housed in an area of 4,496.62 sq.m and has a collection of 1,17,959 books, besides other reading materials; these are supplemented by e-Resources received from INFLIBNET. Library building surrounded by trees is disabled-friendly, barrier free with ramps. The Central Library earned the appreciation of NAAC Peer Team as ‘having good facilities, good maintenance and a beautiful library’ as well as ‘one of the best libraries not only in North-East India, but Eastern India’.",
+  "library": "Central Library, Mizoram University is housed in an area of 4,496.62 sq.m and has a collection of 1,17,959 books, besides other reading materials; these are supplemented by e-Resources received from INFLIBNET. Library building surrounded by trees is disabled-friendly, barrier free with ramps. The Central Library earned the appreciation of NAAC Peer Team as ‘having good facilities, good maintenance and a beautiful library’ as well as ‘one of the best libraries not only in North-East India, but Eastern India’.",
+  
+  "contact": "Postal Address: Mizoram University, Tanhril-796004, Aizawl, Mizoram, P.O Box No: 190, email:registrar@mzu.edu.in"
+
 }
